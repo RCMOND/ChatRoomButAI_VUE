@@ -1,10 +1,4 @@
-
-## 2. ChatRoomVue（前端页面）
-
-**文件名**：`README.md`
-
-```markdown
-# ChatRoomVue - 聊天室前端
+## ChatRoomVue - 聊天室前端
 
 基于 Vue 3 + Vite 的聊天室前端 SPA，支持动态主题、音乐同步、文件上传、头像更换等功能。
 
