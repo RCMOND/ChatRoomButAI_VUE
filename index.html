@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>聊天室</title>
+  <script>
+    // 提前加载配置，保证 Vue 应用启动前可用
+    window.__APP_CONFIG__ = { apiBaseUrl: '' };
+    fetch('/config.json')
+      .then(res => res.json())
+      .then(cfg => { window.__APP_CONFIG__ = cfg; })
+      .catch(() => {});
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
