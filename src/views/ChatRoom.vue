@@ -12,7 +12,6 @@
     <!-- 主聊天区 -->
     <div class="chat-main">
       <div class="chat-header">
-        <!-- 当前用户头像（可点击更换） -->
         <div class="current-user-avatar" @click="triggerAvatarChange" title="点击更换头像">
           <img :src="currentAvatarUrl || defaultAvatar" class="avatar-img" />
           <div class="avatar-overlay">换</div>
@@ -27,7 +26,6 @@
         </div>
       </div>
 
-      <!-- 隐藏的文件选择框 -->
       <input type="file" ref="avatarFileInput" accept="image/*" @change="onAvatarFileSelected" hidden />
 
       <!-- 主题面板 -->
@@ -41,7 +39,7 @@
         </div>
       </div>
 
-      <!-- 音乐控制栏（始终显示） -->
+      <!-- 音乐控制栏 -->
       <div class="music-bar">
         <span>🎵</span>
         <span class="song-title">{{ musicState.currentTitle || '未播放' }}</span>
@@ -54,7 +52,6 @@
         <button class="icon-btn" @click="showPlaylist = !showPlaylist">📋</button>
       </div>
 
-      <!-- 播放列表 -->
       <div v-if="showPlaylist" class="playlist-dropdown">
         <div v-for="(track, idx) in playlist" :key="idx" class="playlist-item" @click="connection.invoke('PlayMusic', track.url, track.title)">
           {{ track.title }}
@@ -99,7 +96,6 @@
         <button class="send-btn" @click="sendText">发送</button>
       </div>
 
-      <!-- 表情面板 -->
       <div v-if="showEmoji" class="emoji-panel">
         <span v-for="e in emojis" :key="e" @click="addEmoji(e)">{{ e }}</span>
       </div>
@@ -211,11 +207,11 @@ let connection = null
 const hubUrl = apiBase ? `${apiBase}/chatHub` : '/chatHub'
 const uploadApiUrl = apiBase ? `${apiBase}/api/upload` : '/api/upload'
 
+// ========== 修复点1：移除自动重连 ==========
 function startConnection() {
   if (!token.value) { router.push('/login'); return }
   connection = new signalR.HubConnectionBuilder()
     .withUrl(hubUrl, { accessTokenFactory: () => token.value })
-    .withAutomaticReconnect()
     .build()
 
   connection.on('ReceiveMessage', (user, text, type, avatar, fileName) => {
@@ -227,7 +223,21 @@ function startConnection() {
   connection.on('UserLeft', user => {
     messages.value.push({ user: '系统', text: `${user} 离开了聊天室`, type: 'text', avatar: defaultAvatar })
   })
-  connection.on('Kickout', msg => { alert(msg); logout() })
+
+  // ========== 修复点2：Kickout 彻底断开并清凭证 ==========
+  connection.on('Kickout', async (msg) => {
+    alert(msg)
+    try {
+      if (connection.state !== signalR.HubConnectionState.Disconnected) {
+        await connection.stop()
+      }
+    } finally {
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('authUsername')
+      router.push('/login')
+    }
+  })
+
   connection.on('Muted', msg => { alert(msg) })
   connection.on('AvatarChanged', (changedUser, newAvatar) => {
     const fullAvatar = getFullUrl(newAvatar)
@@ -239,10 +249,16 @@ function startConnection() {
     Object.assign(musicState, state)
     syncLocalPlayer(state)
   })
-  connection.onclose(() => { alert('连接断开'); logout() })
+
+  connection.onclose(async () => {
+    // 普通断开（非Kickout）可选提示
+    if (token.value) {
+      alert('连接已断开，请刷新重试')
+      logout()
+    }
+  })
 
   connection.start().then(async () => {
-    await connection.invoke('Join', '')
     const history = await connection.invoke('GetRecentMessages')
     messages.value = history.map(m => ({
       user: m.user, text: m.text, type: m.type, avatar: getFullUrl(m.avatar) || defaultAvatar, fileName: m.fileName
@@ -396,7 +412,6 @@ onUnmounted(() => {
 .icon-btn { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text-color); padding: 4px; border-radius: 4px; }
 .icon-btn:hover { background: var(--hover-bg); }
 
-/* 当前用户头像 */
 .current-user-avatar {
   position: relative; width: 40px; height: 40px; border-radius: 50%; overflow: hidden;
   cursor: pointer; margin-right: 10px; border: 2px solid var(--primary-color); flex-shrink: 0;
@@ -408,7 +423,6 @@ onUnmounted(() => {
 }
 .current-user-avatar:hover .avatar-overlay { opacity: 1; }
 
-/* 主题面板 */
 .theme-panel { padding: 10px; background: var(--surface-color); border-bottom: 1px solid var(--border-color); }
 .theme-grid { display: flex; gap: 8px; flex-wrap: wrap; }
 .theme-chip { padding: 6px 12px; border-radius: 20px; cursor: pointer; border: 1px solid var(--border-color); }
@@ -416,13 +430,11 @@ onUnmounted(() => {
 .import-section { margin-top: 10px; }
 .import-btn { background: var(--primary-light); border: 1px solid var(--primary-color); color: var(--primary-color); padding: 4px 12px; border-radius: 20px; cursor: pointer; }
 
-/* 音乐控制条 */
 .music-bar { display: flex; align-items: center; gap: 8px; padding: 8px 15px; background: var(--surface-color); border-bottom: 1px solid var(--border-color); }
 .playlist-dropdown { position: absolute; top: 120px; right: 15px; background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; z-index: 10; }
 .playlist-item { padding: 6px 12px; cursor: pointer; }
 .playlist-item:hover { background: var(--hover-bg); }
 
-/* 消息区域 */
 .messages { flex: 1; overflow-y: auto; padding: 15px; }
 .message-row { display: flex; margin-bottom: 15px; }
 .message-row.is-self { flex-direction: row-reverse; }
@@ -431,15 +443,12 @@ onUnmounted(() => {
 .is-self .message-bubble { background: var(--msg-self-bg); }
 .msg-sender { font-weight: bold; font-size: 13px; margin-bottom: 4px; }
 
-/* 进度条 */
 .progress-bar { height: 20px; background: var(--progress-bg); border-radius: 10px; margin: 10px; overflow: hidden; position: relative; }
 .progress-fill { height: 100%; background: var(--progress-fill); transition: width 0.3s; }
 
-/* 输入区 */
 .input-area { display: flex; align-items: center; gap: 8px; padding: 15px; background: var(--surface-color); border-top: 1px solid var(--border-color); }
 .msg-input { flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 20px; background: var(--input-bg); color: var(--text-color); outline: none; }
 .send-btn { background: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; }
 
-/* 表情面板 */
 .emoji-panel { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px; background: var(--surface-color); border-top: 1px solid var(--border-color); }
 </style>
